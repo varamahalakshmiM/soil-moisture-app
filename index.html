@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TerraMoist Live - Adafruit IO Soil Moisture Monitor</title>
+  <meta name="description" content="Real-time live soil moisture monitoring dashboard powered by Adafruit IO data feeds. Desktop and mobile ready.">
+  
+  <!-- CSS Styles -->
+  <link rel="stylesheet" href="styles.css">
+  
+  <!-- Lucide Icons & Chart.js CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- Top App Header -->
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-icon">
+        <i data-lucide="sprout"></i>
+      </div>
+      <div>
+        <div class="brand-title">TerraMoist Live</div>
+        <div class="brand-subtitle">
+          <i data-lucide="cpu" style="width:12px;height:12px;"></i>
+          <span>Adafruit IO: <strong id="headerUsername">Varu_Mohan</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Desktop Navigation Tabs -->
+    <nav class="nav-tabs-desktop">
+      <button class="tab-btn active" data-tab="tab-dashboard" onclick="switchTab('tab-dashboard')">
+        <i data-lucide="layout-dashboard" style="width:16px;height:16px;"></i> Dashboard
+      </button>
+      <button class="tab-btn" data-tab="tab-history" onclick="switchTab('tab-history')">
+        <i data-lucide="history" style="width:16px;height:16px;"></i> History Log
+      </button>
+      <button class="tab-btn" data-tab="tab-settings" onclick="switchTab('tab-settings')">
+        <i data-lucide="settings" style="width:16px;height:16px;"></i> Settings
+      </button>
+    </nav>
+
+    <!-- Header Actions -->
+    <div class="header-actions">
+      <div class="status-badge" id="connectionBadge">
+        <span class="status-dot"></span>
+        <span id="connectionText">Live Syncing</span>
+      </div>
+
+      <button class="btn btn-secondary btn-sm" id="refreshBtn" onclick="manualRefresh()" title="Refresh Now">
+        <i data-lucide="refresh-cw" id="refreshSpinner" style="width:14px;height:14px;"></i>
+        <span class="btn-text-mobile-hide">Sync Now</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-wrapper">
+
+    <!-- Alert Notification Banner (Hidden by default, shown when moisture out of range) -->
+    <div class="alert-banner" id="alertBanner" style="display: none;">
+      <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <i data-lucide="alert-triangle" style="width:20px;height:20px;"></i>
+        <span id="alertMessage">Warning: Soil moisture level is critically low! Immediate watering recommended.</span>
+      </div>
+      <button class="btn btn-sm btn-secondary" onclick="dismissAlert()">Dismiss</button>
+    </div>
+
+    <!-- TAB 1: DASHBOARD -->
+    <section id="tab-dashboard" class="tab-content active">
+      
+      <!-- Top Grid: Gauge Card + Live Chart -->
+      <div class="dashboard-grid">
+        
+        <!-- Gauge Meter & Status Card -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">
+                <i data-lucide="droplets"></i> Current Moisture Level
+              </div>
+              <div class="card-subtitle">
+                Feed: <span id="currentFeedName" style="color:var(--accent-primary); font-weight:700;">soil-moisture</span>
+              </div>
+            </div>
+            <span class="metric-sub" id="lastUpdatedTime">Syncing...</span>
+          </div>
+
+          <div class="gauge-card-body">
+            <!-- SVG Semi-Circle Gauge -->
+            <div class="gauge-svg-container">
+              <svg class="gauge-svg" viewBox="0 0 260 145">
+                <defs>
+                  <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#EF4444" />
+                    <stop offset="35%" stop-color="#F59E0B" />
+                    <stop offset="65%" stop-color="#10B981" />
+                    <stop offset="100%" stop-color="#3B82F6" />
+                  </linearGradient>
+                  <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                    <feGaussianBlur stdDeviation="3" result="blur" />
+                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                  </filter>
+                </defs>
+
+                <!-- Gauge Track Background -->
+                <path d="M 20 130 A 110 110 0 0 1 240 130" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="22" stroke-linecap="round" />
+                
+                <!-- Gauge Colored Arc -->
+                <path id="gaugeArc" d="M 20 130 A 110 110 0 0 1 240 130" fill="none" stroke="url(#gaugeGradient)" stroke-width="22" stroke-linecap="round" filter="url(#glow)" />
+                
+                <!-- Ticks & Markers -->
+                <text x="12" y="145" fill="#6B7280" font-size="10" font-weight="600">0%</text>
+                <text x="68" y="55" fill="#6B7280" font-size="10" font-weight="600">25%</text>
+                <text x="130" y="32" fill="#6B7280" font-size="10" font-weight="600">50%</text>
+                <text x="190" y="55" fill="#6B7280" font-size="10" font-weight="600">75%</text>
+                <text x="240" y="145" fill="#6B7280" font-size="10" font-weight="600">100%</text>
+
+                <!-- Needle Pointer -->
+                <g id="needleGroup" class="gauge-needle" transform="rotate(-90 130 130)">
+                  <polygon points="126,130 134,130 130,28" fill="#F9FAFB" />
+                  <circle cx="130" cy="130" r="10" fill="#00F2FE" stroke="#090D16" stroke-width="3" />
+                </g>
+              </svg>
+
+              <!-- Big Moisture Percentage Text -->
+              <div class="gauge-value-display">
+                <span class="gauge-number" id="moistureValue">--</span>
+                <span class="gauge-unit">%</span>
+              </div>
+            </div>
+
+            <!-- Health Status Badge -->
+            <div class="moisture-tag tag-optimal" id="moistureStatusTag">
+              <i data-lucide="check-circle-2" style="width:18px;height:18px;" id="moistureStatusIcon"></i>
+              <span id="moistureStatusText">SYNCING LIVE DATA...</span>
+            </div>
+          </div>
+
+          <!-- Quick Metrics Bar -->
+          <div class="metrics-grid">
+            <div class="metric-box">
+              <div class="metric-label">Feed High</div>
+              <div class="metric-val" id="metricMax">--%</div>
+              <div class="metric-sub"><i data-lucide="trending-up" style="width:12px;height:12px;color:#10B981;"></i> Highest</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Feed Low</div>
+              <div class="metric-val" id="metricMin">--%</div>
+              <div class="metric-sub"><i data-lucide="trending-down" style="width:12px;height:12px;color:#EF4444;"></i> Lowest</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Average</div>
+              <div class="metric-val" id="metricAvg">--%</div>
+              <div class="metric-sub"><i data-lucide="activity" style="width:12px;height:12px;color:#00F2FE;"></i> Mean value</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Auto Sync</div>
+              <div class="metric-val" id="countdownSec">3s</div>
+              <div class="metric-sub"><i data-lucide="clock" style="width:12px;height:12px;color:#9CA3AF;"></i> Interval</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live History Chart Card -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">
+                <i data-lucide="line-chart"></i> Moisture Trend Analysis
+              </div>
+              <div class="card-subtitle">Live hardware telemetry graph from Adafruit IO</div>
+            </div>
+
+            <!-- Time Filter Buttons -->
+            <div class="time-filter-group">
+              <button class="filter-chip active" onclick="setChartLimit(20, this)">20 Pts</button>
+              <button class="filter-chip" onclick="setChartLimit(35, this)">35 Pts</button>
+              <button class="filter-chip" onclick="setChartLimit(50, this)">All (50)</button>
+            </div>
+          </div>
+
+          <div class="chart-container">
+            <canvas id="moistureChart"></canvas>
+            <div id="chartStatus" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;color:var(--text-muted);font-size:0.85rem;pointer-events:none;max-width:85%;"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom Section: Target Plant Profile & Recommendation -->
+      <div class="bottom-section" style="margin-top: 1.5rem;">
+        
+        <!-- Target Plant Preset Selector -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">
+                <i data-lucide="flower2"></i> Plant Profile & Target Thresholds
+              </div>
+              <div class="card-subtitle">Select plant type to customize optimal moisture range</div>
+            </div>
+          </div>
+
+          <div class="plant-selector-grid">
+            <div class="plant-chip active" onclick="selectPlantPreset('houseplants', this)">
+              <span class="plant-emoji">🪴</span>
+              <span class="plant-name">Houseplants</span>
+              <span class="plant-range">40% - 70%</span>
+            </div>
+            <div class="plant-chip" onclick="selectPlantPreset('succulents', this)">
+              <span class="plant-emoji">🌵</span>
+              <span class="plant-name">Succulents</span>
+              <span class="plant-range">15% - 35%</span>
+            </div>
+            <div class="plant-chip" onclick="selectPlantPreset('tropical', this)">
+              <span class="plant-emoji">🌿</span>
+              <span class="plant-name">Tropical</span>
+              <span class="plant-range">50% - 80%</span>
+            </div>
+            <div class="plant-chip" onclick="selectPlantPreset('vegetables', this)">
+              <span class="plant-emoji">🍅</span>
+              <span class="plant-name">Garden/Crop</span>
+              <span class="plant-range">45% - 75%</span>
+            </div>
+            <div class="plant-chip" onclick="selectPlantPreset('bonsai', this)">
+              <span class="plant-emoji">🌳</span>
+              <span class="plant-name">Bonsai</span>
+              <span class="plant-range">35% - 60%</span>
+            </div>
+            <div class="plant-chip" onclick="selectPlantPreset('custom', this)">
+              <span class="plant-emoji">⚙️</span>
+              <span class="plant-name">Custom</span>
+              <span class="plant-range" id="customRangeLabel">Set in Settings</span>
+            </div>
+          </div>
+
+          <!-- Dynamic Plant Advice Box -->
+          <div class="advice-box" style="margin-top: 0.85rem;">
+            <div class="advice-icon">
+              <i data-lucide="lightbulb" style="width:22px;height:22px;"></i>
+            </div>
+            <div>
+              <div class="advice-title" id="adviceTitle">Smart Care Recommendation</div>
+              <div class="advice-text" id="adviceText">
+                Connecting to Adafruit IO... Telemetry recommendations will appear here.
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- TAB 2: HISTORY LOG -->
+    <section id="tab-history" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">
+              <i data-lucide="database"></i> Adafruit IO Live Feed History
+            </div>
+            <div class="card-subtitle">Raw logged moisture sensor entries stored in Adafruit IO</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="exportCSV()">
+            <i data-lucide="download" style="width:14px;height:14px;"></i> Export CSV
+          </button>
+        </div>
+
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Timestamp (UTC / Local)</th>
+                <th>Moisture Value (%)</th>
+                <th>Moisture Status</th>
+                <th>Data Entry ID</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody">
+              <tr>
+                <td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-muted);">
+                  Loading live history logs from Adafruit IO...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: SETTINGS -->
+    <section id="tab-settings" class="tab-content">
+      <div class="card tester-card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">
+              <i data-lucide="sliders-horizontal"></i> Adafruit IO Credentials & Preferences
+            </div>
+            <div class="card-subtitle">Configure your Adafruit IO credentials, feed key, and alerts</div>
+          </div>
+        </div>
+
+        <form onsubmit="saveSettings(event)" class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Adafruit IO Username</label>
+            <input type="text" id="settingUsername" class="form-input" value="Varu_Mohan" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Adafruit AIO Key</label>
+            <input type="password" id="settingAioKey" class="form-input" value="aio_Knii76EyBpMMn34pZcUCctJ6bSmI" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Active Feed Key</label>
+            <select id="settingFeedSelect" class="form-select" onchange="changeFeedKey(this.value)">
+              <option value="soil-moisture" selected>soil-moisture (Hardware Sensor)</option>
+              <option value="moisture">moisture</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Auto Sync Interval</label>
+            <select id="settingInterval" class="form-select">
+              <option value="3000" selected>Every 3 Seconds</option>
+              <option value="5000">Every 5 Seconds</option>
+              <option value="10000">Every 10 Seconds</option>
+              <option value="30000">Every 30 Seconds</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Min Threshold Alert (%)</label>
+            <input type="number" id="settingMinThreshold" class="form-input" value="35" min="0" max="100">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Max Threshold Alert (%)</label>
+            <input type="number" id="settingMaxThreshold" class="form-input" value="75" min="0" max="100">
+          </div>
+
+          <div class="form-group full-width" style="margin-top: 0.5rem; display:flex; gap:0.75rem;">
+            <button type="submit" class="btn btn-primary">
+              <i data-lucide="save"></i> Save Credentials & Reconnect
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="fetchUserFeeds()">
+              <i data-lucide="refresh-cw"></i> Auto-Detect Feeds
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Mobile Fixed Bottom Navigation Bar -->
+  <nav class="mobile-nav-bar">
+    <button class="mobile-nav-item active" data-tab="tab-dashboard" onclick="switchTab('tab-dashboard')">
+      <i data-lucide="layout-dashboard"></i>
+      <span>Dashboard</span>
+    </button>
+    <button class="mobile-nav-item" data-tab="tab-history" onclick="switchTab('tab-history')">
+      <i data-lucide="history"></i>
+      <span>History</span>
+    </button>
+    <button class="mobile-nav-item" data-tab="tab-settings" onclick="switchTab('tab-settings')">
+      <i data-lucide="settings"></i>
+      <span>Settings</span>
+    </button>
+  </nav>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Application Logic -->
+  <script src="app.js"></script>
+
+</body>
+</html>
