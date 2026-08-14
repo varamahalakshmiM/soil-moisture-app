@@ -5,7 +5,7 @@
 // State Management
 const state = {
   username: localStorage.getItem('tm_username') || 'Varu_Mohan',
-  aioKey: localStorage.getItem('tm_aioKey') || 'aio_VvEb64x2cGkWhE3u17IwnFUO7F7K',
+  aioKey: localStorage.getItem('tm_aioKey') || '',
   feedKey: localStorage.getItem('tm_feedKey') || 'soil-moisture',
   pollInterval: parseInt(localStorage.getItem('tm_pollInterval') || '3000'),
   chartLimit: 50,
